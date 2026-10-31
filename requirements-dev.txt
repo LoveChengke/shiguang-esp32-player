@@ -1,0 +1,4 @@
+platformio==6.1.18
+esptool==4.8.1
+pyserial==3.5
+ziglang==0.14.1

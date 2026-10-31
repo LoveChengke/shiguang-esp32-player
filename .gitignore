@@ -1,0 +1,17 @@
+.pio/
+.pio-core/
+.tools/
+.local/
+__pycache__/
+*.pyc
+dist/
+.env
+.env.*
+!.env.example
+simulator/*.tmp
+simulator/assets/*.tmp.wasm
+sdcard/books/*
+!sdcard/books/start.txt
+sdcard/music/*
+!sdcard/music/.gitkeep
+!sdcard/music/test-tone.mp3

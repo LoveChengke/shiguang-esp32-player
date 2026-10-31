@@ -1,0 +1,23 @@
+{
+  "version": "e4793257e947a134a3c1a782244a6b5c64ce879c58fcd836fe3da41f00866a64",
+  "sourceHash": "eb787a2da96e421ace4fee3ad5dad7f46d9ebecf79d2efe4b6d198a42a2ba052",
+  "builtAt": 1793406633.0372126,
+  "sources": [
+    "include/audio_service.hpp",
+    "include/board.hpp",
+    "include/reader.hpp",
+    "lib/PocketCore/src/PocketCore.hpp",
+    "simulator/audio_adapter.cpp",
+    "simulator/firmware_bridge.cpp",
+    "simulator/hal/Arduino.h",
+    "simulator/hal/freertos/FreeRTOS.h",
+    "simulator/hal/freertos/semphr.h",
+    "simulator/hal/LovyanGFX.hpp",
+    "simulator/hal/Preferences.h",
+    "simulator/hal/SD.h",
+    "simulator/hal/SPI.h",
+    "src/main.cpp",
+    "src/reader.cpp",
+    "tools/build_simulator.py"
+  ]
+}

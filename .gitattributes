@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.mp3 binary
+*.wasm binary
+# Preserve upstream license formatting verbatim.
+simulator/licenses/** -whitespace

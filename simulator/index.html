@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#edece5">
+  <title>拾光 · ESP32 交互模拟器</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="firmware.js"></script>
+  <script defer src="demo-books.js"></script>
+  <script defer src="runtime.js"></script>
+  <script defer src="host.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="拾光模拟器主页"><span class="brand-mark">拾</span><span>拾光<span class="brand-en">POCKET / ESP32</span></span></a>
+    <div class="top-actions"><span class="offline"><i></i>本地运行 · 无需联网</span><button id="help-button" class="text-button">使用说明 <span>↗</span></button></div>
+  </header>
+  <main class="workspace">
+    <section class="intro">
+      <p class="eyebrow"><span class="tiny-rule"></span> INTERACTIVE SIMULATOR <span class="version">01</span></p>
+      <h1>一首歌。<br>一页故事。<br><span>慢慢来。</span></h1>
+      <p class="intro-copy">先在这里，试试你的随身播放器。<br>用五个按键，把音乐与书页装进口袋。</p>
+      <div class="specs"><span>ESP32</span><span>240 × 320</span><span>5 KEYS</span></div>
+      <div class="keyboard-guide">
+        <p class="small-heading">让手指先熟悉一下</p>
+        <div><span><kbd>↑</kbd> <kbd>↓</kbd></span><span>选择 / 翻页 / 切歌</span></div>
+        <div><span><kbd>Enter</kbd></span><span>确认 / 播放暂停</span></div>
+        <div><span><kbd>Esc</kbd> <kbd>M</kbd></span><span>返回 / 切换音乐与阅读</span></div>
+        <p class="guide-foot">按住 650ms 为长按 · <kbd>Space</kbd> 随时暂停</p>
+      </div>
+      <p class="simulation-note">直接编译运行 src/main.cpp 与 reader.cpp。<br>修改源码后自动构建，屏幕随之更新。</p>
+    </section>
+
+    <section class="device-stage" aria-label="播放器模拟设备">
+      <div class="device-caption"><span>YOUR POCKET COMPANION</span><span class="live-dot">LIVE PREVIEW</span></div>
+      <div class="device" id="device">
+        <div class="device-top"><span class="device-wordmark">拾光 <em>shí guāng</em></span><span class="device-led" id="device-led"></span></div>
+        <div class="screen-bezel"><canvas id="screen" width="480" height="640" tabindex="0" aria-label="240乘320播放器屏幕，使用下方按键操作"></canvas></div>
+        <div class="screen-bottom"><span>240 × 320 / TFT</span><span>OFFLINE IS A GOOD PLACE</span></div>
+        <div class="controls">
+          <button class="device-key side-key back-key" data-key="3" aria-label="返回，长按回主页"><span>↶</span><small>返回</small></button>
+          <div class="navigation-pad">
+            <button class="device-key up-key" data-key="0" aria-label="上，长按音量加">⌃</button>
+            <button class="device-key ok-key" data-key="2" aria-label="确认，长按播放暂停">OK</button>
+            <button class="device-key down-key" data-key="1" aria-label="下，长按音量减">⌄</button>
+          </div>
+          <button class="device-key side-key mode-key" data-key="4" aria-label="模式，长按播放暂停"><span>⇄</span><small>模式</small></button>
+        </div>
+        <div class="speaker" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="usb-port" aria-hidden="true"></span>
+      </div>
+      <div class="stage-toolbar"><button id="restart-button" class="text-button">↻ 模拟重启</button><span id="save-state" role="status">设置与书签自动保存在本机</span></div>
+    </section>
+
+    <aside class="inspector">
+      <section class="panel views-panel">
+        <div class="panel-heading"><h2>去哪里逛逛</h2><span>01 / EXPLORE</span></div>
+        <div class="view-grid" id="view-grid">
+          <button data-view="Home"><span>⌂</span>主页</button><button data-view="Music"><span>♫</span>音乐库</button><button data-view="Books"><span>▤</span>我的书架</button><button data-view="Player"><span>◎</span>正在播放</button><button data-view="Reader"><span>≡</span>小说阅读</button><button data-view="Settings"><span>☷</span>偏好设置</button>
+        </div>
+      </section>
+      <section class="panel media-panel">
+        <div class="panel-heading"><h2>虚拟存储卡</h2><span>02 / LOCAL FILES</span></div>
+        <div class="tabs" role="tablist" aria-label="媒体类型"><button id="music-tab" role="tab" aria-selected="true">音乐 <span id="music-count"></span></button><button id="books-tab" role="tab" aria-selected="false">书架 <span id="books-count"></span></button></div>
+        <div id="media-list" class="media-list" aria-live="polite"></div>
+        <label class="import-zone" id="import-zone"><input id="file-input" type="file" accept=".mp3,.txt" multiple><span class="import-icon">＋</span><span><strong>放入你自己的音乐和小说</strong><small>点击选择，或拖入 MP3 / TXT</small></span></label>
+        <div class="encoding-row"><label for="encoding">TXT 编码</label><select id="encoding"><option value="utf-8">UTF-8（默认）</option><option value="gb18030">GB18030 / GBK</option><option value="utf-16">UTF-16</option></select></div>
+        <p class="media-note" id="media-note" role="status">自带原创音乐与阅读示例，点击即可体验。</p>
+      </section>
+      <section class="panel status-panel">
+        <div class="panel-heading"><h2>此刻的拾光</h2><span class="connection-indicator"></span></div>
+        <div class="status-row"><span>音乐</span><strong id="audio-state">尚未播放</strong></div>
+        <div class="volume-row"><label for="volume">音量 <span id="volume-value">10 / 21</span></label><input id="volume" type="range" min="0" max="21" value="10" aria-label="音量"></div>
+        <div class="status-row"><span>固件执行</span><strong id="engine-state">正在初始化…</strong></div>
+        <div class="status-row"><span>源码构建</span><strong id="build-state">检查中…</strong></div>
+        <div class="status-row"><span>阅读位置</span><strong id="byte-state">尚未打开书籍</strong></div>
+        <button id="clear-button" class="text-button clear-button">清除模拟器中的导入文件与记录</button>
+      </section>
+    </aside>
+  </main>
+  <footer class="page-footer"><span>拾光 / 把喜欢的事，留在身边。</span><span>ESP32 OFFLINE PLAYER · INTERFACE LAB</span></footer>
+  <div id="notification" class="notification" role="status" aria-live="polite"></div>
+  <dialog id="help-dialog"><button id="close-help" class="close-dialog" aria-label="关闭使用说明">×</button><p class="eyebrow">QUICK START</p><h2>你好，拾光。</h2><p>这块屏幕运行从 src/main.cpp、src/reader.cpp 和 PocketCore 编译得到的 WebAssembly。显示、按键、SD、NVS 和音频接口由浏览器适配。</p><ul><li>短按上 / 下：选择、翻页或切歌。</li><li>短按 OK：确认、暂停；阅读时切换 16 / 24 字号。</li><li>长按上 / 下：音量加 / 减。</li><li>长按 OK 或模式：播放 / 暂停背景音乐。</li><li>模式：音乐与阅读切换；长按返回：保存并回主页。</li></ul><p>通过「开发模拟器.cmd」启动后，修改固件源码并保存，会自动重新编译并重启模拟器。错误会显示在右侧构建状态。通过「打开模拟器.cmd」打开的是最近一次构建，不会监视源码。</p><p>导入的媒体只保存在此浏览器中；导入后自动重启并由固件重新扫描虚拟 SD 卡。TXT 可选择 GBK / UTF-16，导入时转为 UTF-8。</p><p class="dialog-note">这是固件源码级主机模拟器。中文字形由系统字体代替，音频由浏览器代替 ESP8266Audio/I2S；不模拟 Xtensa 指令、FreeRTOS 调度、真实内存或电气外设。新增硬件 API 时需扩充 simulator/hal。</p><button id="start-demo" class="primary-button">边听边看，开始体验 →</button></dialog>
+</body>
+</html>
