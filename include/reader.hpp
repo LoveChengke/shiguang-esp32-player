@@ -26,6 +26,7 @@ public:
     void close();
     bool next();
     bool previous();
+    bool seekPercent(unsigned percent);
     bool tick();
     void save();
     void setFont(unsigned value);

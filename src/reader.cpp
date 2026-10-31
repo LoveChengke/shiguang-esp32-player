@@ -83,6 +83,25 @@ bool Reader::previous() {
     searchAt_ = 0; searchTarget_ = offset; searching_ = true;
     return true;
 }
+bool Reader::seekPercent(unsigned percent) {
+    if (!file_ || !size_) return false;
+    uint32_t at = std::min<uint64_t>(size_ - 1, (uint64_t(size_) * std::min(100U, percent) + 99) / 100);
+    // A percentage is an original-file byte offset. Move at most three bytes
+    // forward to a UTF-8 lead byte; never scan the whole novel in the UI task.
+    xSemaphoreTake(mutex_, portMAX_DELAY);
+    file_.seek(at);
+    while (at < size_ && (file_.peek() & 0xC0) == 0x80) { file_.read(); ++at; }
+    xSemaphoreGive(mutex_);
+    if (at >= size_) {
+        at = size_ - 1;
+        xSemaphoreTake(mutex_, portMAX_DELAY);
+        file_.seek(at);
+        while (at && (file_.peek() & 0xC0) == 0x80) { --at; file_.seek(at); }
+        xSemaphoreGive(mutex_);
+    }
+    searching_ = false; history_.clear();
+    return load(at);
+}
 bool Reader::tick() {
     bool changed = false;
     if (searching_) {

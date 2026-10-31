@@ -5,6 +5,7 @@ extern "C" {
 __attribute__((import_module("host"),import_name("rect"))) void host_rect(int,int,int,int,int,int,int);
 __attribute__((import_module("host"),import_name("circle"))) void host_circle(int,int,int,int,int);
 __attribute__((import_module("host"),import_name("text"))) void host_text(const char*,int,int,int,int,int);
+__attribute__((import_module("host"),import_name("image"))) void host_image(const uint8_t*,unsigned,int,int,int,int,float);
 }
 namespace fonts {struct Font{int size;};inline Font efontCN_12{12},efontCN_16{16},efontCN_24{24};}
 namespace lgfx {
@@ -34,5 +35,7 @@ public:
     void drawRoundRect(int x,int y,int w,int h,int r,int c){host_rect(x,y,w,h,c,r,1);}
     void drawCircle(int x,int y,int r,int c){host_circle(x,y,r,c,0);}
     void fillCircle(int x,int y,int r,int c){host_circle(x,y,r,c,1);}
+    bool drawJpg(const uint8_t* data,unsigned n,int x,int y,int w,int h,int,int,float scale){host_image(data,n,x,y,w,h,scale);return true;}
+    bool drawPng(const uint8_t* data,unsigned n,int x,int y,int w,int h,int,int,float scale){host_image(data,n,x,y,w,h,scale);return true;}
 };
 }

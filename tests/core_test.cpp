@@ -1,4 +1,5 @@
 #include <PocketCore.hpp>
+#include <MediaCore.hpp>
 #include <iostream>
 #include <cstdlib>
 #include <limits>
@@ -69,5 +70,20 @@ int main() {
         CHECK(extension("/music/中文.MP3", ".mp3")); CHECK(!extension("a.mp3.bak", ".mp3"));
         CHECK(hash64("/books/a.txt") != hash64("/books/b.txt"));
     }
-    std::cout << "PASS " << checks << " checks (real firmware pagination, UTF-8, bookmarks, debounce)\n";
+    {
+        uint8_t frame[417]{};frame[0]=255;frame[1]=251;frame[2]=144;
+        auto header=mp3Frame(frame);CHECK(header.bytes==417);CHECK(header.rate==44100);CHECK(header.samples==1152);
+        Mp3Timing timing;timing.parse(frame,sizeof(frame),200,1600200);CHECK(timing.duration==100000);CHECK(timing.position(40)==640200);
+        std::memcpy(frame+36,"Xing",4);frame[43]=7;frame[46]=3;frame[47]=232; // flags 7, 1000 frames
+        frame[48]=0;frame[49]=24;frame[50]=106;frame[51]=0; // 1,600,000 bytes
+        for(unsigned i=0;i<100;++i)frame[52+i]=i*2;
+        timing.parse(frame,sizeof(frame),200,1600200);CHECK(timing.hasToc);CHECK(timing.duration==26122);CHECK(timing.position(40)==500200);
+        frame[1]=0;CHECK(mp3Frame(frame).bytes==0);
+        auto lrc=lyrics("[ti:Example]\n[offset:-500]\n[00:02.50][00:04.123]第二行\n[00:01.00]第一行\n");
+        CHECK(lrc.size()==3);CHECK(lrc[0].at==500);CHECK(lrc[0].text=="第一行");CHECK(lrc[1].at==2000);CHECK(lrc[2].at==3623);
+        auto plain=lyrics("普通歌词\n另一句\n");CHECK(plain.size()==2);CHECK(plain[0].at==0);
+        CHECK(lyrics("[bad]\n\n").empty());
+        std::string many;for(int i=0;i<200;++i)many+="[00:01.00]test\n";CHECK(lyrics(many).size()==96);
+    }
+    std::cout << "PASS " << checks << " checks (firmware pagination, UTF-8, bookmarks, debounce, MP3 timing and lyrics)\n";
 }

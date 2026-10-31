@@ -1,50 +1,71 @@
-"""Copy MP3/TXT to a staging directory; convert novels explicitly to UTF-8."""
+"""Preserve media folders and companions in an SD staging directory."""
 import argparse
 import pathlib
 
-def gather(paths, suffix):
+def gather(paths, suffixes):
     files = []
     for value in paths:
         path = pathlib.Path(value)
         if not path.exists():
             raise ValueError("Input does not exist: %s" % path)
         candidates = sorted(path.rglob("*")) if path.is_dir() else [path]
-        files.extend(p for p in candidates if p.is_file() and p.suffix.lower() == suffix)
+        for candidate in candidates:
+            if candidate.is_file() and candidate.suffix.lower() in suffixes:
+                relative = pathlib.Path(path.name) / candidate.relative_to(path) if path.is_dir() else pathlib.Path(candidate.name)
+                files.append((candidate, relative))
+        # Selecting a single song also imports its adjacent lyrics and cover.
+        if path.is_file() and path.suffix.lower() == ".mp3":
+            for sibling in path.parent.iterdir():
+                if sibling.is_file() and sibling.suffix.lower() in (".lrc", ".jpg", ".jpeg", ".png") and (sibling.stem.casefold() == path.stem.casefold() or sibling.stem.casefold() in ("cover", "folder")):
+                    files.append((sibling, pathlib.Path(sibling.name)))
     return files
 
 def prepare(output, music=(), books=(), encoding="utf-8", overwrite=False):
     output = pathlib.Path(output)
-    inputs = [("music", path) for path in gather(music, ".mp3")]
-    inputs += [("books", path) for path in gather(books, ".txt")]
+    inputs = [("music", path, relative) for path, relative in gather(music, (".mp3", ".lrc", ".jpg", ".jpeg", ".png"))]
+    inputs += [("books", path, relative) for path, relative in gather(books, (".txt",))]
     for kind in ("music", "books"):
-        if sum(k == kind for k, _ in inputs) > 128:
+        if len({relative.as_posix().casefold() for k, path, relative in inputs if k == kind and path.suffix.lower() in (".mp3", ".txt")}) > 128:
             raise ValueError("Firmware supports at most 128 files per library")
     planned = {}
-    for kind, source in inputs:
-        target = output / kind / source.name
-        if len(("/" + kind + "/" + source.name).encode("utf-8")) >= 192:
+    sources = {}
+    for kind, source, relative in inputs:
+        target = output / kind / relative
+        if len(relative.parts) > 4:
+            raise ValueError("Firmware supports at most 3 folder levels: %s" % relative)
+        if len(("/" + kind + "/" + relative.as_posix()).encode("utf-8")) >= 192:
             raise ValueError("Path is too long: %s" % source.name)
         normalized = str(target).casefold()
         if normalized in planned:
+            if sources[normalized] == source.resolve():
+                continue
             raise ValueError("Duplicate destination filename: %s" % source.name)
         data = source.read_bytes()
-        if kind == "books":
+        if not data:
+            raise ValueError("Empty media file: %s" % source)
+        if source.suffix.lower() in (".txt", ".lrc"):
             actual_encoding = "utf-16" if data[:2] in (b"\xff\xfe", b"\xfe\xff") else encoding
             text = data.decode(actual_encoding).lstrip("\ufeff")
             if "\x00" in text:
                 raise ValueError("Embedded NUL; check input encoding: %s" % source)
             data = text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
-            if not data:
+            if not text.strip():
                 raise ValueError("Empty novel: %s" % source)
+        if source.suffix.lower() == ".lrc" and len(data) > 16384:
+            raise ValueError("Lyrics must be at most 16KB: %s" % source)
+        if source.suffix.lower() in (".jpg", ".jpeg", ".png") and len(data) > 49152:
+            raise ValueError("Cover must be at most 48KB; resize it first: %s" % source)
         if target.exists() and not overwrite and target.read_bytes() != data:
             raise ValueError("Destination exists; use --overwrite: %s" % target)
         if source.resolve() == target.resolve():
             raise ValueError("Use a separate output folder: %s" % target)
         planned[normalized] = (target, data)
+        sources[normalized] = source.resolve()
     # Validate the entire plan before the first destination write.
     for kind in ("music", "books"):
         (output / kind).mkdir(parents=True, exist_ok=True)
     for target, data in planned.values():
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     return [str(target) for target, _ in planned.values()]
 

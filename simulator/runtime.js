@@ -15,6 +15,7 @@
         restart:()=>host.restart?.(),
         rect:(...args)=>host.rect?.(...args),circle:(...args)=>host.circle?.(...args),
         text:(p,...args)=>host.text?.(read(p),...args),
+        image:(p,n,...args)=>host.image?.(mem().slice(p,p+n),...args),
         pref_length:(ns,key)=>host.preferences[`${read(ns)}/${read(key)}`]?.length||0,
         pref_read:(ns,key,p,size)=>{const data=host.preferences[`${read(ns)}/${read(key)}`]||[];const n=Math.min(size,data.length);mem().set(data.slice(0,n),p);return n;},
         pref_write:(ns,key,p,size)=>{host.preferences[`${read(ns)}/${read(key)}`]=Array.from(mem().subarray(p,p+size));return host.savePreferences?.()===false?0:size;},
@@ -30,7 +31,7 @@
       if(!a||!b)throw new Error('虚拟 SD 卡内存不足');
       try{let memory=new Uint8Array(this.e.memory.buffer);memory.set(name,a);memory.set(bytes,b);this.e.sim_file(a,b,bytes.length);}finally{this.e.sim_free(a);this.e.sim_free(b);}
     }
-    setup(){this.e.sim_setup();}
+    setup(){if(this.host.clock)this.e.sim_clock(this.host.clock());this.e.sim_setup();}
     loop(){this.e.sim_loop();}
     key(key,down){this.e.sim_key(key,Number(down));}
     serial(c){this.e.sim_serial(c.charCodeAt(0));}

@@ -9,11 +9,13 @@ struct Playback {
     int track = -1;
     uint32_t finished = 0;
     uint8_t progress = 0;
+    uint32_t elapsedMs = 0, durationMs = 0;
 };
 namespace player {
 bool begin(SemaphoreHandle_t sdLock);
 bool play(const char* path, int index);
 bool pause();
 bool volume(uint8_t value);
+bool seek(uint8_t percent);
 Playback status();
 }

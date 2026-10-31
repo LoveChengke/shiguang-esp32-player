@@ -6,13 +6,14 @@
   const canvas=$('screen'),ctx=canvas.getContext('2d');ctx.scale(2,2);
   const audio=new Audio();audio.preload='metadata';
   let firmware,binary=globalThis.POCKET_FIRMWARE_BASE64,preferences={},db=null,ready=false;
-  let startTime=performance.now(),currentTrack=-1,finished=0,audioState=0,mediaTab='music',generation=0;
+  let startTime=performance.now(),currentTrack=-1,finished=0,audioState=0,mediaTab='music',generation=0,pendingSeek=null;
   let notificationTimer,saveLabel='设置与书签自动保存在本机',buildVersion=null,buildError='',restarting=false;
   let drawText=[],logs=[],lastSnapshot;
   let tracks=[
     {name:'001-午后信号.mp3',url:'assets/afternoon.mp3',detail:'原创演示 · 00:24',demo:true,kind:'music'},
     {name:'002-晚风来信.mp3',url:'assets/evening.mp3',detail:'原创演示 · 00:24',demo:true,kind:'music'}
   ];
+  let extras=[];
   let books=globalThis.POCKET_DEMO_BOOKS.map(book=>({...book,bytes:encoder.encode(book.text),demo:true,kind:'books'}));
   const rgb=value=>`rgb(${Math.round((value>>11&31)*255/31)},${Math.round((value>>5&63)*255/63)},${Math.round((value&31)*255/31)})`;
   function rect(x,y,w,h,color,r,stroke){
@@ -25,6 +26,12 @@
     drawText.push(value);ctx.textBaseline='top';
     for(const c of value){const ascii=c.codePointAt(0)<128,w=ascii?font/2:font;ctx.fillStyle=rgb(bg);ctx.fillRect(x,y,w,font);ctx.fillStyle=rgb(color);ctx.font=`${font}px ${ascii?'Consolas,monospace':'"Microsoft YaHei","PingFang SC",sans-serif'}`;ctx.fillText(c,x,y+1,w);x+=w;}
   }
+  const imageCache=new Map();
+  function image(bytes,x,y,w,h,scale){
+    let hash=2166136261;for(const byte of bytes)hash=Math.imul(hash^byte,16777619);const key=bytes.length+':'+hash;
+    let img=imageCache.get(key);if(!img){img=new Image();img.src=URL.createObjectURL(new Blob([bytes],{type:bytes[0]===137?'image/png':'image/jpeg'}));imageCache.set(key,img);if(imageCache.size>6){const oldest=imageCache.keys().next().value;URL.revokeObjectURL(imageCache.get(oldest).src);imageCache.delete(oldest);}}
+    if(img.complete&&img.naturalWidth)ctx.drawImage(img,x,y,Math.min(w,img.naturalWidth*scale),Math.min(h,img.naturalHeight*scale));
+  }
   function notify(message){$('notification').textContent=message;$('notification').classList.add('visible');clearTimeout(notificationTimer);notificationTimer=setTimeout(()=>$('notification').classList.remove('visible'),3500);}
   function savePreferences(){
     try{localStorage.setItem(NVS,JSON.stringify(preferences));saveLabel='NVS 已保存 · '+new Date().toLocaleTimeString('zh-CN',{hour12:false});return true;}
@@ -34,9 +41,13 @@
     if(field===0)return audioState;
     if(field===1)return currentTrack;
     if(field===2)return finished;
+    if(field===4)return Math.floor(audio.currentTime*1000)||0;
+    if(field===5)return Number.isFinite(audio.duration)?Math.floor(audio.duration*1000):0;
     return Number.isFinite(audio.duration)&&audio.duration>0?Math.min(100,Math.floor(audio.currentTime/audio.duration*100)):0;
   }
   function audioCommand(command,path,value){
+    logs.push(`AUDIO command=${command} value=${value}`);if(logs.length>200)logs.shift();
+    if(command===3){if(!Number.isFinite(audio.duration)||audio.duration<=0)return 0;pendingSeek=Math.min(99,Math.max(0,value));if(audio.readyState>=2){audio.currentTime=audio.duration*pendingSeek/100;pendingSeek=null;}return 1;}
     if(command===2){audio.volume=value/21*.7;return 1;}
     if(command===1){
       if(audioState===1){audio.pause();audioState=2;}
@@ -44,14 +55,15 @@
       return 1;
     }
     const track=tracks.find(t=>`/music/${t.name}`===path);if(!track)return 0;
-    currentTrack=value;audioState=1;const token=++generation;audio.src=track.url;
+    pendingSeek=null;currentTrack=value;audioState=1;const token=++generation;audio.src=track.url;
     audio.play().catch(error=>{
       if(token!==generation)return;
       audioState=error.name==='NotAllowedError'?2:3;
       notify(error.name==='NotAllowedError'?'浏览器需要手动操作，请点击 OK 继续播放。':'该 MP3 无法由浏览器播放。');
     });return 1;
   }
-  function stopAudio(){++generation;audio.pause();audio.removeAttribute('src');audio.load();currentTrack=-1;finished=0;audioState=0;}
+  function stopAudio(){pendingSeek=null;++generation;audio.pause();audio.removeAttribute('src');audio.load();currentTrack=-1;finished=0;audioState=0;}
+  audio.addEventListener('loadeddata',()=>{if(pendingSeek!==null&&Number.isFinite(audio.duration)){audio.currentTime=audio.duration*pendingSeek/100;pendingSeek=null;}});
   audio.addEventListener('ended',()=>{++finished;audioState=0;});
   audio.addEventListener('error',()=>{if(currentTrack>=0)audioState=3;});
   function sortMedia(){
@@ -62,10 +74,11 @@
     try{
       if(firmware)firmware.save();stopAudio();for(const timer of releaseTimers.values())clearTimeout(timer);releaseTimers.clear();held.clear();document.querySelectorAll('.device-key').forEach(b=>b.classList.remove('pressed'));
       binary=newBinary;startTime=performance.now();
-      firmware=new FirmwareRuntime(binary,{preferences,millis:()=>performance.now()-startTime,rect,circle,text,audioCommand,audioStatus,
+      firmware=new FirmwareRuntime(binary,{preferences,millis:()=>performance.now()-startTime,clock:()=>{const now=new Date();return now.getHours()*60+now.getMinutes();},rect,circle,text,image,audioCommand,audioStatus,
         savePreferences,log:value=>{logs.push(value);if(logs.length>200)logs.shift();},restart:()=>queueMicrotask(()=>boot())});
       sortMedia();for(const book of books)firmware.mount(`/books/${book.name}`,book.bytes);
-      for(const track of tracks)firmware.mount(`/music/${track.name}`,new Uint8Array([0]));
+      for(const track of tracks)firmware.mount(`/music/${track.name}`,track.head?new Uint8Array(track.head):new Uint8Array([0]));
+      for(const item of extras)firmware.mount(`/music/${item.name}`,new Uint8Array(item.bytes));
       firmware.setup();ready=true;$('engine-state').textContent='真实固件 C++ / WASM';document.body.dataset.ready='true';updateStatus();
     }catch(error){$('engine-state').textContent='执行失败';$('engine-state').classList.add('fatal');notify(error.message);console.error(error);}
     finally{restarting=false;}
@@ -79,9 +92,9 @@
     $('save-state').textContent=saveLabel;$('device-led').classList.toggle('playing',s.audio===1);
   }
   let previousStatus=0;
-  function frame(now){
+  function frame(){
+    const now=performance.now();
     if(ready){try{firmware.loop();if(now-previousStatus>=100){previousStatus=now;updateStatus();}}catch(error){ready=false;notify(`固件执行错误：${error.message}`);console.error(error);}}
-    requestAnimationFrame(frame);
   }
   function showMedia(){
     $('music-count').textContent=tracks.length;$('books-count').textContent=books.length;
@@ -98,26 +111,36 @@
   }
   function openDB(){return new Promise((resolve,reject)=>{const request=indexedDB.open('pocket-simulator-files',1);request.onupgradeneeded=()=>request.result.createObjectStore('files',{keyPath:'id'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);request.onblocked=()=>reject(new Error('数据库被其他窗口占用'));});}
   function dbOperation(mode,operation){return new Promise((resolve,reject)=>{if(!db){reject(new Error('浏览器未允许保存文件'));return;}const transaction=db.transaction('files',mode);let result;const request=operation(transaction.objectStore('files'));request.onsuccess=()=>{result=request.result;};transaction.oncomplete=()=>resolve(result);transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);});}
-  function addFile(item){if(item.kind==='music')tracks.push({...item,url:URL.createObjectURL(item.blob)});else books.push({...item,bytes:new Uint8Array(item.bytes)});}
+  function addFile(item){if(item.kind==='sidecar'){extras.push({...item,bytes:new Uint8Array(item.bytes)});return;}if(item.kind==='music')tracks.push({...item,url:URL.createObjectURL(item.blob)});else books.push({...item,bytes:new Uint8Array(item.bytes)});}
   async function importFiles(files){
     let count=0,errors=[];
     for(const file of files){try{
-      const kind=/\.mp3$/i.test(file.name)?'music':/\.txt$/i.test(file.name)?'books':null;if(!kind)throw new Error('仅支持 MP3 / TXT');
-      const items=kind==='music'?tracks:books;if(items.length>=128)throw new Error('该分类已达到 128 个文件');
-      if(items.some(i=>i.name.toLowerCase()===file.name.toLowerCase()))throw new Error('已有同名文件');
-      if(encoder.encode(`/${kind}/${file.name}`).length>=192)throw new Error('文件名过长');if(!file.size)throw new Error('文件为空');
+      const kind=/\.mp3$/i.test(file.name)?'music':/\.txt$/i.test(file.name)?'books':/\.(lrc|jpe?g|png)$/i.test(file.name)?'sidecar':null;if(!kind)continue;
+      const name=file.webkitRelativePath||file.relativePath||file.name;const parts=name.replace(/\\/g,'/').split('/');if(parts.some(p=>!p||p==='.'||p==='..')||parts.length>4)throw new Error('最多支持 3 级子文件夹');
+      const items=kind==='music'?tracks:kind==='books'?books:extras;if(kind!=='sidecar'&&items.length>=128)throw new Error('该分类已达到 128 个文件');
+      if(items.some(i=>i.name.toLowerCase()===name.toLowerCase()))throw new Error('已有同名文件');
+      if(encoder.encode(`/${kind==='books'?'books':'music'}/${name}`).length>=192)throw new Error('文件名过长');if(!file.size)throw new Error('文件为空');
       if(file.size>(kind==='books'?8:128)*1024*1024)throw new Error(kind==='books'?'模拟器单本小说导入上限 8MB':'模拟器单曲导入上限 128MB');
-      const item={id:`local:${kind}/${file.name}`,name:file.name,kind};
+      const item={id:`local:${kind}/${name}`,name,kind};
       if(kind==='books'){
         const raw=new Uint8Array(await file.arrayBuffer());let encoding=$('encoding').value;
         if(raw[0]===0xff&&raw[1]===0xfe)encoding='utf-16le';else if(raw[0]===0xfe&&raw[1]===0xff)encoding='utf-16be';
         const value=new TextDecoder(encoding,{fatal:true}).decode(raw);if(value.includes('\0')||!value.trim())throw new Error('编码错误或内容为空，请检查 TXT 编码');
         item.bytes=encoder.encode(value.replace(/\r\n?/g,'\n'));
-      }else item.blob=file;
-      if(db)await dbOperation('readwrite',store=>store.add(item));addFile(item);++count;mediaTab=kind==='music'?'music':'books';
+      }else if(kind==='music'){item.blob=file;item.head=await file.slice(0,131072).arrayBuffer();}
+      else{
+        if(file.size>49152)throw new Error('歌词/封面上限 48KB，歌词不超过 16KB');
+        item.bytes=await file.arrayBuffer();
+        if(/\.lrc$/i.test(name)){
+          const raw=new Uint8Array(item.bytes);let encoding=$('encoding').value;
+          if(raw[0]===255&&raw[1]===254)encoding='utf-16le';else if(raw[0]===254&&raw[1]===255)encoding='utf-16be';
+          item.bytes=encoder.encode(new TextDecoder(encoding,{fatal:true}).decode(raw));if(item.bytes.length>16384)throw new Error('歌词超过 16KB');
+        }
+      }
+      if(db)await dbOperation('readwrite',store=>store.add(item));addFile(item);++count;mediaTab=kind==='books'?'books':'music';
     }catch(error){errors.push(`${file.name}：${error.message}`);}}
     if(count)boot();showMedia();const message=[count?`已导入 ${count} 个文件，固件已重启扫描${db?'':'（本次窗口有效）'}`:'',errors.join('；')].filter(Boolean).join('。');
-    $('media-note').textContent=message;notify(message);$('file-input').value='';
+    $('media-note').textContent=message;notify(message);$('file-input').value='';$('folder-input').value='';
   }
   const held=new Map(),releaseTimers=new Map();
   function press(key,source){
@@ -127,7 +150,8 @@
   function release(source,cancel=false){
     const record=held.get(source);if(!record)return;held.delete(source);
     const finish=()=>{releaseTimers.delete(source);if(![...held.values()].some(r=>r.key===record.key)){document.querySelector(`[data-key="${record.key}"]`).classList.remove('pressed');if(ready){firmware.key(record.key,false);firmware.loop();}}};
-    if(cancel)finish();else releaseTimers.set(source,setTimeout(finish,Math.max(0,55-(performance.now()-record.at))));
+    const remaining=55-(performance.now()-record.at);
+    if(cancel||remaining<=0)finish();else releaseTimers.set(source,setTimeout(finish,remaining));
   }
   function tap(key){const source=`tap:${key}:${performance.now()}`;press(key,source);release(source);}
   document.querySelectorAll('[data-key]').forEach(button=>{
@@ -135,7 +159,7 @@
     button.addEventListener('pointerup',e=>release(`pointer:${e.pointerId}`));button.addEventListener('pointercancel',e=>release(`pointer:${e.pointerId}`,true));
     button.addEventListener('click',e=>{if(e.detail===0)tap(Number(button.dataset.key));});button.addEventListener('contextmenu',e=>e.preventDefault());
   });
-  const keyMap={ArrowUp:0,ArrowDown:1,Enter:2,Escape:3,m:4,M:4,u:0,d:1,o:2,b:3};
+  const keyMap={ArrowUp:0,ArrowDown:1,ArrowLeft:5,ArrowRight:6,Enter:2,Escape:3,m:4,M:4,u:0,d:1,o:2,b:3};
   window.addEventListener('keydown',e=>{
     if(!ready||e.target.closest?.('input,select,textarea,dialog,[contenteditable="true"]')||$('help-dialog').open||e.ctrlKey||e.metaKey||e.altKey)return;
     if((e.key==='Enter'||e.key===' ')&&e.target instanceof HTMLButtonElement)return;
@@ -149,12 +173,13 @@
   $('view-grid').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button&&ready){firmware.e.sim_navigate(views.indexOf(button.dataset.view));firmware.loop();updateStatus();}});
   $('volume').addEventListener('input',e=>{if(ready)firmware.e.sim_volume(Number(e.target.value));});
   $('music-tab').addEventListener('click',()=>{mediaTab='music';showMedia();});$('books-tab').addEventListener('click',()=>{mediaTab='books';showMedia();});
+  $('folder-input').addEventListener('change',e=>importFiles(e.target.files));
   $('file-input').addEventListener('change',e=>importFiles(e.target.files));$('import-zone').addEventListener('dragover',e=>{e.preventDefault();$('import-zone').classList.add('dragging');});$('import-zone').addEventListener('dragleave',()=>$('import-zone').classList.remove('dragging'));$('import-zone').addEventListener('drop',e=>{e.preventDefault();$('import-zone').classList.remove('dragging');importFiles(e.dataTransfer.files);});
   $('restart-button').addEventListener('click',()=>{boot();notify('固件已重启，NVS 中的设置与书签已保留。');});
   $('clear-button').addEventListener('click',async()=>{
     if(!confirm('清除模拟器的导入文件、设置和书签？ESP32 板上的数据不会受到影响。'))return;
     try{if(db)await dbOperation('readwrite',store=>store.clear());}catch(error){notify(`清除失败：${error.message}`);return;}
-    if(ready)firmware.save();firmware=null;for(const t of tracks)if(!t.demo)URL.revokeObjectURL(t.url);tracks=tracks.filter(t=>t.demo);books=books.filter(b=>b.demo);preferences={};savePreferences();boot();showMedia();notify('已恢复初始演示内容。');
+    if(ready)firmware.save();firmware=null;for(const t of tracks)if(!t.demo)URL.revokeObjectURL(t.url);tracks=tracks.filter(t=>t.demo);books=books.filter(b=>b.demo);extras=[];preferences={};savePreferences();boot();showMedia();notify('已恢复初始演示内容。');
   });
   $('help-button').addEventListener('click',()=>$('help-dialog').showModal());$('close-help').addEventListener('click',()=>$('help-dialog').close());
   $('start-demo').addEventListener('click',()=>{$('help-dialog').close();if(ready){firmware.e.sim_play_track(0);firmware.e.sim_navigate(4);}});
@@ -177,8 +202,8 @@
   async function init(){
     try{const saved=JSON.parse(localStorage.getItem(NVS)||'{}');if(saved&&typeof saved==='object')preferences=saved;}catch{saveLabel='浏览器未允许本地保存';}
     try{db=await openDB();const files=await dbOperation('readonly',store=>store.getAll());for(const file of files)addFile(file);}catch{notify('导入文件只能在本次窗口保留。');}
-    boot();showMedia();requestAnimationFrame(frame);pollBuild();
+    boot();showMedia();setInterval(frame,8);pollBuild();
   }
-  globalThis.PocketSimulator={snapshot:()=>firmware?.snapshot(),screenText:()=>[...drawText],logs:()=>[...logs]};
+  globalThis.PocketSimulator={snapshot:()=>firmware?.snapshot(),screenText:()=>[...drawText],logs:()=>[...logs],images:()=>[...imageCache.values()].map(i=>({width:i.naturalWidth,height:i.naturalHeight})),audio:()=>({time:audio.currentTime,duration:audio.duration,readyState:audio.readyState,paused:audio.paused,error:audio.error?.message})};
   init();
 })();

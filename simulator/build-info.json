@@ -1,11 +1,13 @@
 {
-  "version": "e4793257e947a134a3c1a782244a6b5c64ce879c58fcd836fe3da41f00866a64",
-  "sourceHash": "eb787a2da96e421ace4fee3ad5dad7f46d9ebecf79d2efe4b6d198a42a2ba052",
-  "builtAt": 1793406633.0372126,
+  "version": "7460db2d84666f01ff9edbaf7111dc166d0534ab1fff064de16f4eb15c562b8d",
+  "sourceHash": "d31f7a25ba4d325525a6f570ee1e3edf4f84583f278d88c871df6a5145aa15bc",
+  "builtAt": 1793409924.9736335,
   "sources": [
     "include/audio_service.hpp",
     "include/board.hpp",
+    "include/music_info.hpp",
     "include/reader.hpp",
+    "lib/PocketCore/src/MediaCore.hpp",
     "lib/PocketCore/src/PocketCore.hpp",
     "simulator/audio_adapter.cpp",
     "simulator/firmware_bridge.cpp",
@@ -17,6 +19,7 @@
     "simulator/hal/SD.h",
     "simulator/hal/SPI.h",
     "src/main.cpp",
+    "src/music_info.cpp",
     "src/reader.cpp",
     "tools/build_simulator.py"
   ]
